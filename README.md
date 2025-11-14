@@ -75,23 +75,6 @@ extension/
 - `notifications`: 显示操作结果通知
 - `host_permissions`: 访问 LiteMark API
 
-### 图标制作
-
-需要创建以下尺寸的图标：
-- 16x16 像素
-- 48x48 像素
-- 128x128 像素
-
-可以使用在线工具或设计软件制作，保存为 PNG 格式。
-
-## 工作原理
-
-1. **配置保存**：使用 `chrome.storage.sync` API 保存 LiteMark 地址和登录信息
-2. **右键菜单**：扩展安装时自动创建右键菜单项
-3. **Token 缓存**：登录后 Token 会缓存 1 小时，减少重复登录
-4. **API 调用**：通过 LiteMark REST API 添加书签
-5. **通知反馈**：使用 Chrome Notifications API 显示操作结果
-
 ## 注意事项
 
 1. 首次使用需要配置 LiteMark 地址和登录信息
