@@ -16,15 +16,15 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
+      "64": "icons/LiteMark64.png",
+      "128": "icons/LiteMark64.png",
+      "512": "icons/LiteMark.png"
     }
   },
   "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+      "64": "icons/LiteMark64.png",
+    "128": "icons/LiteMark128.png",
+    "512": "icons/LiteMark.png"
   },
   "background": {
     "service_worker": "background.js"
