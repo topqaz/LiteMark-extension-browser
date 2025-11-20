@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LiteMark 书签助手",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "一键将当前网页添加到 LiteMark 书签管理系统",
   "permissions": [
     "storage",
