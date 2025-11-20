@@ -102,7 +102,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       // 显示通知提示配置
       chrome.notifications.create({
         type: 'basic',
-        iconUrl: 'icons/icon48.png',
+        iconUrl: 'icons/LiteMark48.png',
         title: 'LiteMark 书签助手',
         message: '请先配置 LiteMark 地址和登录信息（点击扩展图标）'
       });
@@ -201,7 +201,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     const categoryText = category ? `（${category}）` : '';
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: 'icons/icon48.png',
+      iconUrl: 'icons/LiteMark48.png',
       title: '添加成功',
       message: `"${title.substring(0, 40)}" 已添加到 LiteMark${categoryText}`
     });
@@ -219,7 +219,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     // 显示错误通知
     chrome.notifications.create({
       type: 'basic',
-      iconUrl: 'icons/icon48.png',
+      iconUrl: 'icons/LiteMark48.png',
       title: '添加失败',
       message: error.message || '未知错误'
     });
