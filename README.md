@@ -267,6 +267,6 @@ MIT License
 
 ## 相关链接
 
-- [LiteMark 主项目](https://github.com/your-repo/LiteMark)
+- [LiteMark 主项目](https://github.com/topqaz/LiteMark)
 - [问题反馈](https://github.com/topqaz/LiteMark-extension-browser/issues)
 - [更新日志](https://github.com/topqaz/LiteMark-extension-browser/releases)
