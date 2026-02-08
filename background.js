@@ -1,170 +1,221 @@
-// 后台服务脚本
+
 let tokenCache = null;
 let tokenExpiry = 0;
 let categoriesCache = null;
 let categoriesCacheTime = 0;
-const CATEGORIES_CACHE_DURATION = 5 * 60 * 1000; // 5分钟缓存
+const CATEGORIES_CACHE_DURATION = 5 * 60 * 1000;
 
-// 扩展安装时创建右键菜单
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log('LiteMark 书签助手已安装');
   createContextMenu();
-  // 延迟加载分类，避免阻塞
-  setTimeout(() => {
-    updateContextMenuWithCategories();
-  }, 500);
 });
 
-// 创建右键菜单
-function createContextMenu() {
-  // 清除旧的菜单项
-  chrome.contextMenus.removeAll(() => {
-    // 创建主菜单
+
+chrome.runtime.onStartup.addListener(() => {
+  console.log('扩展启动，更新菜单');
+  setTimeout(() => {
+    createContextMenu();
+  }, 1000);
+});
+
+
+async function createContextMenu() {
+  try {
+
+    const config = await chrome.storage.sync.get(['apiUrl', 'username', 'password', 'enableAI']);
+    const enableAI = config.enableAI || false;
+
+
+    await chrome.contextMenus.removeAll();
+
+
     chrome.contextMenus.create({
       id: 'add-to-litemark',
       title: '添加到 LiteMark',
       contexts: ['page', 'link', 'selection']
     });
-    
-    // 添加"无分类"选项（默认）
-    chrome.contextMenus.create({
-      id: 'add-to-litemark-none',
-      parentId: 'add-to-litemark',
-      title: '无分类',
-      contexts: ['page', 'link', 'selection']
-    });
-  });
-}
 
-// 更新菜单，添加分类子菜单
-async function updateContextMenuWithCategories() {
-  try {
-    // 获取配置
-    const config = await chrome.storage.sync.get(['apiUrl', 'username', 'password']);
-    
-    if (!config.apiUrl || !config.username || !config.password) {
-      // 未配置，不更新菜单
-      return;
-    }
-    
-    // 获取分类列表
-    const categories = await getCategories(config.apiUrl, config.username, config.password);
-    
-    if (categories.length === 0) {
-      // 没有分类，保持当前菜单
-      return;
-    }
-    
-    // 检查分隔线是否已存在
-    chrome.contextMenus.remove('add-to-litemark-separator', () => {
-      // 添加分隔线
+
+    if (enableAI) {
       chrome.contextMenus.create({
-        id: 'add-to-litemark-separator',
+        id: 'ai-smart-add',
+        parentId: 'add-to-litemark',
+        title: '🤖 AI 智能添加（完全自动）',
+        contexts: ['page', 'link', 'selection']
+      });
+
+
+      chrome.contextMenus.create({
+        id: 'separator-1',
         parentId: 'add-to-litemark',
         type: 'separator',
         contexts: ['page', 'link', 'selection']
       });
-      
-      // 添加分类子菜单
-      categories.forEach((category, index) => {
-        const menuId = `add-to-litemark-category-${index}`;
-        // 先尝试移除，避免重复
-        chrome.contextMenus.remove(menuId, () => {
+    }
+
+    console.log('右键菜单创建成功');
+
+    if (config.apiUrl && config.username && config.password) {
+      setTimeout(() => {
+        updateCategoryMenu(enableAI);
+      }, 500);
+    }
+  } catch (error) {
+    console.error('创建右键菜单失败:', error);
+  }
+}
+
+
+async function updateCategoryMenu(enableAI) {
+  try {
+
+    const config = await chrome.storage.sync.get(['apiUrl', 'username', 'password']);
+
+    if (!config.apiUrl || !config.username || !config.password) {
+      console.log('未配置 LiteMark，跳过分类菜单更新');
+      return;
+    }
+
+
+    const categories = await getCategories(config.apiUrl, config.username, config.password);
+
+    if (categories.length > 0) {
+
+      for (let i = 0; i < categories.length; i++) {
+        const category = categories[i];
+
+
+        chrome.contextMenus.create({
+          id: `category-${i}`,
+          parentId: 'add-to-litemark',
+          title: `📁 ${category}`,
+          contexts: ['page', 'link', 'selection']
+        });
+
+
+        if (enableAI) {
           chrome.contextMenus.create({
-            id: menuId,
-            parentId: 'add-to-litemark',
-            title: category,
+            id: `category-${i}-ai`,
+            parentId: `category-${i}`,
+            title: '🤖 AI 生成内容',
             contexts: ['page', 'link', 'selection']
           });
+        }
+
+        chrome.contextMenus.create({
+          id: `category-${i}-direct`,
+          parentId: `category-${i}`,
+          title: '📝 直接添加',
+          contexts: ['page', 'link', 'selection']
         });
-      });
-    });
-    
+      }
+    }
+
+    console.log(`分类菜单更新成功，共 ${categories.length} 个分类`);
   } catch (error) {
     console.error('更新分类菜单失败:', error);
   }
 }
 
-// 处理右键菜单点击
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   console.log('右键菜单被点击', info.menuItemId, info, tab);
-  
-  // 检查是否是我们的菜单项
-  if (!info.menuItemId || !info.menuItemId.startsWith('add-to-litemark')) {
+
+
+  if (!info.menuItemId || !info.menuItemId.toString().startsWith('add-to-litemark') &&
+      !info.menuItemId.toString().startsWith('ai-smart-add') &&
+      !info.menuItemId.toString().startsWith('category-')) {
     return;
   }
-  
+
   try {
-    // 获取配置
-    const config = await chrome.storage.sync.get(['apiUrl', 'username', 'password']);
-    
+
+    const config = await chrome.storage.sync.get(['apiUrl', 'username', 'password', 'enableAI']);
+
     if (!config.apiUrl || !config.username || !config.password) {
-      // 显示通知提示配置
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/LiteMark48.png',
+
+      await showNotification({
         title: 'LiteMark 书签助手',
-        message: '请先配置 LiteMark 地址和登录信息（点击扩展图标）'
+        message: '请先配置 LiteMark 地址和登录信息（点击扩展图标）',
+        iconUrl: 'icons/LiteMark48.png'
       });
-      // 打开配置页面
-      chrome.action.openPopup();
       return;
     }
-    
-    // 确定要添加的 URL 和标题
-    let url = '';
-    let title = '';
-    
-    // 优先使用选中文本作为标题（如果用户选中了文本）
-    const hasSelection = info.selectionText && info.selectionText.trim();
-    
-    if (info.linkUrl) {
-      // 如果右键点击的是链接
-      url = info.linkUrl;
-      // 标题优先级：选中文本 > 链接文本 > 网站标题 > "链接"
-      if (hasSelection) {
-        title = info.selectionText.trim();
-      } else if (info.linkText && info.linkText.trim()) {
-        title = info.linkText.trim();
-      } else if (tab.title) {
-        title = tab.title;
-      } else {
-        title = '链接';
-      }
+
+
+    const menuId = info.menuItemId.toString();
+
+    const { url, title } = extractUrlAndTitle(info, tab);
+
+
+    if (menuId === 'ai-smart-add') {
+
+      await handleAISmartAdd(url, title, config);
+    } else if (menuId === 'add-to-litemark') {
+      // 主菜单项：直接添加到默认分类
+      await handleDirectAdd(url, title, config);
+    } else if (menuId.startsWith('category-')) {
+
+      await handleCategoryAdd(menuId, url, title, config);
+    }
+
+  } catch (error) {
+    console.error('添加书签失败:', error);
+    await showNotification({
+      title: '❌ 添加失败',
+      message: error.message || '未知错误',
+      iconUrl: 'icons/LiteMark48.png'
+    });
+  }
+});
+
+
+function extractUrlAndTitle(info, tab) {
+  let url = '';
+  let title = '';
+
+
+  const hasSelection = info.selectionText && info.selectionText.trim();
+
+  if (info.linkUrl) {
+
+    url = info.linkUrl;
+
+    if (hasSelection) {
+      title = info.selectionText.trim();
+    } else if (info.linkText && info.linkText.trim()) {
+      title = info.linkText.trim();
+    } else if (tab.title) {
+      title = tab.title;
     } else {
-      // 添加当前页面
-      url = tab.url;
-      // 标题优先级：选中文本 > 网站标题
-      if (hasSelection) {
-        title = info.selectionText.trim();
-      } else if (tab.title) {
-        title = tab.title;
-      } else {
-        title = url; // 如果都没有，使用 URL
-      }
+      title = '链接';
     }
-    
-    // 确定分类
-    let category = undefined;
-    if (info.menuItemId === 'add-to-litemark-none') {
-      category = undefined; // 无分类
-    } else if (info.menuItemId.startsWith('add-to-litemark-category-')) {
-      // 从菜单项ID中提取分类索引
-      const index = parseInt(info.menuItemId.replace('add-to-litemark-category-', ''));
-      const categories = await getCategories(config.apiUrl, config.username, config.password);
-      if (categories[index] !== undefined) {
-        category = categories[index];
-      }
+  } else {
+
+    url = tab.url;
+
+    if (hasSelection) {
+      title = info.selectionText.trim();
+    } else if (tab.title) {
+      title = tab.title;
+    } else {
+      title = url;
     }
-    
-    // 获取 Token（可能需要登录）
+  }
+
+  return { url, title };
+}
+
+// 处理直接添加（主菜单项）
+async function handleDirectAdd(url, title, config) {
+  try {
     const token = await getToken(config.apiUrl, config.username, config.password);
-    
+
     if (!token) {
       throw new Error('无法获取登录 Token');
     }
-    
-    // 添加书签
+
     const response = await fetch(`${config.apiUrl}/api/bookmarks`, {
       method: 'POST',
       headers: {
@@ -172,13 +223,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({
-        title: title.substring(0, 200), // 限制标题长度
+        title: title.substring(0, 200),
         url: url,
-        category: category,
         visible: true
       })
     });
-    
+
     if (!response.ok) {
       let errorMessage = '添加失败';
       try {
@@ -190,101 +240,332 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       }
       throw new Error(errorMessage);
     }
-    
+
     const bookmark = await response.json();
-    
-    // 清除分类缓存，以便下次显示最新分类
+
+    await showNotification({
+      title: '✅ 添加成功',
+      message: title.substring(0, 50),
+      iconUrl: 'icons/LiteMark48.png'
+    });
+
+    console.log('书签添加成功:', bookmark);
+
+    // 清除分类缓存
     categoriesCache = null;
     categoriesCacheTime = 0;
-    
-    // 显示成功通知
-    const categoryText = category ? `（${category}）` : '';
-    chrome.notifications.create({
-      type: 'basic',
-      iconUrl: 'icons/LiteMark48.png',
-      title: '添加成功',
-      message: `"${title.substring(0, 40)}" 已添加到 LiteMark${categoryText}`
-    });
-    
-    console.log('书签添加成功:', bookmark);
-    
-    // 更新菜单以反映新的分类（如果有新分类）
+
     setTimeout(() => {
-      updateContextMenuWithCategories();
+      createContextMenu();
     }, 1000);
-    
+
   } catch (error) {
     console.error('添加书签失败:', error);
-    
-    // 显示错误通知
-    chrome.notifications.create({
-      type: 'basic',
-      iconUrl: 'icons/LiteMark48.png',
-      title: '添加失败',
-      message: error.message || '未知错误'
-    });
+    throw error;
   }
-});
+}
 
-// 获取分类列表（带缓存）
+// 处理 AI 智能添加
+async function handleAISmartAdd(url, title, config) {
+
+  const notificationId = await showNotification({
+    title: '🤖 AI 正在处理',
+    message: '正在分析网页内容，生成智能书签...',
+    iconUrl: 'icons/LiteMark48.png',
+    autoClear: false  // 不自动清除，等待手动清除
+  });
+
+  try {
+
+    const token = await getToken(config.apiUrl, config.username, config.password);
+
+    if (!token) {
+      throw new Error('无法获取登录 Token');
+    }
+
+    const response = await fetch(`${config.apiUrl}/api/ai/quick-add`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ url })
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'AI 添加失败';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (e) {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const bookmark = await response.json();
+
+
+    categoriesCache = null;
+    categoriesCacheTime = 0;
+
+
+    if (notificationId) {
+      await new Promise(resolve => {
+        chrome.notifications.clear(notificationId, () => {
+          // 延迟 200ms 再显示新通知，确保旧通知完全清除
+          setTimeout(resolve, 200);
+        });
+      });
+    }
+
+
+    const categoryText = bookmark.category ? ` · ${bookmark.category}` : '';
+    const tagsText = bookmark.tags ? ` · ${bookmark.tags}` : '';
+
+    await showNotification({
+      title: '🤖 AI 添加成功',
+      message: `${bookmark.title.substring(0, 40)}${categoryText}${tagsText}`,
+      iconUrl: 'icons/LiteMark48.png',
+      autoClear: true,
+      duration: 5000
+    });
+
+    console.log('AI 书签添加成功:', bookmark);
+
+
+    setTimeout(() => {
+      createContextMenu();
+    }, 1000);
+
+  } catch (error) {
+    console.error('AI 添加书签失败:', error);
+
+    if (notificationId) {
+      chrome.notifications.clear(notificationId);
+    }
+
+    throw error;
+  }
+}
+
+
+async function handleCategoryAdd(menuId, url, title, config) {
+  try {
+
+    const parts = menuId.split('-');
+    const isNone = parts[1] === 'none';
+    const useAI = parts[parts.length - 1] === 'ai';
+
+    let category = undefined;
+
+    if (!isNone) {
+
+      const categoryIndex = parseInt(parts[1]);
+      const categories = await getCategories(config.apiUrl, config.username, config.password);
+      if (categories[categoryIndex] !== undefined) {
+        category = categories[categoryIndex];
+      }
+    }
+
+
+    const token = await getToken(config.apiUrl, config.username, config.password);
+
+    if (!token) {
+      throw new Error('无法获取登录 Token');
+    }
+
+    let apiEndpoint = '';
+    let requestBody = {};
+
+    if (useAI) {
+
+      if (category) {
+        
+        apiEndpoint = `${config.apiUrl}/api/ai/quick-add-with-category`;
+        requestBody = {
+          url: url,
+          title: title,
+          category: category
+        };
+      } else {
+        apiEndpoint = `${config.apiUrl}/api/ai/quick-add-with-title`;
+        requestBody = {
+          url: url,
+          title: title
+        };
+      }
+
+
+      const notificationId = await showNotification({
+        title: '🤖 AI 正在处理',
+        message: '正在生成书签内容...',
+        iconUrl: 'icons/LiteMark48.png',
+        autoClear: false  // 不自动清除，等待手动清除
+      });
+
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'AI 添加失败';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          const errorText = await response.text();
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const bookmark = await response.json();
+
+
+      if (notificationId) {
+        await new Promise(resolve => {
+          chrome.notifications.clear(notificationId, () => {
+            // 延迟 200ms 再显示新通知，确保旧通知完全清除
+            setTimeout(resolve, 200);
+          });
+        });
+      }
+
+
+      const categoryText = bookmark.category ? ` · ${bookmark.category}` : '';
+      await showNotification({
+        title: '🤖 AI 添加成功',
+        message: `${bookmark.title.substring(0, 40)}${categoryText}`,
+        iconUrl: 'icons/LiteMark48.png',
+        autoClear: true,
+        duration: 5000
+      });
+
+      console.log('AI 书签添加成功:', bookmark);
+
+    } else {
+
+      apiEndpoint = `${config.apiUrl}/api/bookmarks`;
+      requestBody = {
+        title: title.substring(0, 200),
+        url: url,
+        category: category,
+        visible: true
+      };
+
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        let errorMessage = '添加失败';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          const errorText = await response.text();
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const bookmark = await response.json();
+
+      
+      const categoryText = category ? ` · ${category}` : '';
+      await showNotification({
+        title: '✅ 添加成功',
+        message: `${title.substring(0, 40)}${categoryText}`,
+        iconUrl: 'icons/LiteMark48.png'
+      });
+
+      console.log('书签添加成功:', bookmark);
+    }
+
+
+    categoriesCache = null;
+    categoriesCacheTime = 0;
+
+    setTimeout(() => {
+      createContextMenu();
+    }, 1000);
+
+  } catch (error) {
+    console.error('添加书签失败:', error);
+    throw error;
+  }
+}
+
+
 async function getCategories(apiUrl, username, password) {
-  // 检查缓存
+
   const now = Date.now();
   if (categoriesCache && categoriesCacheTime > now) {
     return categoriesCache;
   }
-  
+
   try {
-    // 获取 Token
+
     const token = await getToken(apiUrl, username, password);
-    
-    // 获取所有书签
+
+
     const response = await fetch(`${apiUrl}/api/bookmarks`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`
       }
     });
-    
+
     if (!response.ok) {
       throw new Error('获取书签列表失败');
     }
-    
+
     const bookmarks = await response.json();
-    
-    // 提取所有唯一的分类
+
+
     const categorySet = new Set();
     bookmarks.forEach(bookmark => {
       if (bookmark.category && bookmark.category.trim()) {
         categorySet.add(bookmark.category.trim());
       }
     });
-    
-    // 转换为数组并排序
+
+
     const categories = Array.from(categorySet).sort();
-    
-    // 缓存结果
+
     categoriesCache = categories;
     categoriesCacheTime = now + CATEGORIES_CACHE_DURATION;
-    
+
     console.log('获取到分类列表:', categories);
     return categories;
-    
+
   } catch (error) {
     console.error('获取分类失败:', error);
-    // 返回空数组，不缓存错误结果
+    
     return [];
   }
 }
 
-// 获取 Token（带缓存）
+
 async function getToken(apiUrl, username, password) {
-  // 检查缓存
+
   const now = Date.now();
   if (tokenCache && tokenExpiry > now) {
     return tokenCache;
   }
-  
+
   try {
     const response = await fetch(`${apiUrl}/api/auth/login`, {
       method: 'POST',
@@ -293,16 +574,16 @@ async function getToken(apiUrl, username, password) {
       },
       body: JSON.stringify({ username, password })
     });
-    
+
     if (!response.ok) {
       throw new Error('登录失败');
     }
-    
+
     const data = await response.json();
     tokenCache = data.token;
-    // Token 缓存 1 小时
+
     tokenExpiry = now + 60 * 60 * 1000;
-    
+
     return tokenCache;
   } catch (error) {
     console.error('获取 Token 失败:', error);
@@ -312,27 +593,44 @@ async function getToken(apiUrl, username, password) {
   }
 }
 
-// 监听配置变化，清除缓存并更新菜单
+async function showNotification({ title, message, iconUrl, autoClear = true, duration = 3000 }) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      type: 'basic',
+      iconUrl: iconUrl || 'icons/LiteMark48.png',
+      title: title,
+      message: message,
+      priority: 2,
+      requireInteraction: false
+    };
+
+    chrome.notifications.create('', options, (notificationId) => {
+      if (chrome.runtime.lastError) {
+        console.error('通知创建失败:', chrome.runtime.lastError);
+        reject(chrome.runtime.lastError);
+        return;
+      }
+
+      resolve(notificationId);
+
+      // 根据参数决定是否自动清除通知
+      if (autoClear) {
+        setTimeout(() => {
+          chrome.notifications.clear(notificationId);
+        }, duration);
+      }
+    });
+  });
+}
+
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'sync' && (changes.apiUrl || changes.username || changes.password)) {
+  if (areaName === 'sync' && (changes.apiUrl || changes.username || changes.password || changes.enableAI)) {
     console.log('配置已更改，清除缓存并更新菜单');
     tokenCache = null;
     tokenExpiry = 0;
     categoriesCache = null;
     categoriesCacheTime = 0;
-    // 重新创建菜单
     createContextMenu();
-    // 延迟更新分类菜单
-    setTimeout(() => {
-      updateContextMenuWithCategories();
-    }, 500);
   }
-});
-
-// 扩展启动时也更新菜单
-chrome.runtime.onStartup.addListener(() => {
-  console.log('扩展启动，更新菜单');
-  setTimeout(() => {
-    updateContextMenuWithCategories();
-  }, 1000);
 });

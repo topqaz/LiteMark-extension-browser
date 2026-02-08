@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LiteMark 书签助手",
-  "version": "1.1.0",
-  "description": "一键将当前网页添加到 LiteMark 书签管理系统",
+  "version": "2.0.0",
+  "description": "一键将当前网页添加到 LiteMark 书签管理系统，支持AI自动分类和标签。",
   "permissions": [
     "storage",
     "contextMenus",

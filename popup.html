@@ -2,76 +2,160 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LiteMark 书签导入</title>
+  <title>LiteMark 书签助手</title>
   <link rel="stylesheet" href="popup.css">
+  <style>
+    html, body {
+      width: 600px !important;
+      min-width: 600px !important;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>
+      <div class="header-content">
         <img src="icons/LiteMark64.png" alt="LiteMark" class="header-icon" />
-        LiteMark 导入
-      </h1>
+        <div class="header-text">
+          <h1>LiteMark</h1>
+          <p class="header-subtitle">智能书签管理助手</p>
+        </div>
+      </div>
     </header>
 
     <!-- 配置区域 -->
     <section id="config-section" class="section">
-      <h2>配置</h2>
+      <div class="section-header">
+        <h2>⚙️ 初始配置</h2>
+        <p class="section-desc">首次使用需要配置 LiteMark 服务器信息</p>
+      </div>
+
       <div class="form-group">
-        <label for="api-url">LiteMark API 地址：</label>
+        <label for="api-url">
+          <span class="label-icon">🌐</span>
+          <span>服务器地址</span>
+        </label>
         <input type="text" id="api-url" placeholder="https://your-litemark.app" />
         <small>输入你的 LiteMark 部署地址</small>
       </div>
+
       <div class="form-group">
-        <label for="username">用户名：</label>
-        <input type="text" id="username" placeholder="admin" />
+        <label for="username">
+          <span class="label-icon">👤</span>
+          <span>用户名</span>
+        </label>
+        <input type="text" id="username" placeholder="admin" autocomplete="username" />
       </div>
+
       <div class="form-group">
-        <label for="password">密码：</label>
-        <input type="password" id="password" placeholder="admin123" />
+        <label for="password">
+          <span class="label-icon">🔒</span>
+          <span>密码</span>
+        </label>
+        <div class="password-wrapper">
+          <input type="password" id="password" placeholder="请输入密码" autocomplete="current-password" />
+          <button type="button" class="toggle-password" id="toggle-password" aria-label="显示密码">
+            <svg class="eye-icon eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <svg class="eye-icon eye-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+            </svg>
+          </button>
+        </div>
       </div>
-      <button id="save-config" type="button" class="btn btn-primary">保存配置</button>
+
+      <div class="form-group checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="enable-ai" />
+          <span class="checkbox-custom"></span>
+          <span class="checkbox-text">
+            <strong>🤖 启用 AI 智能添加</strong>
+            <small>自动生成标题、描述、标签和推荐分类</small>
+          </span>
+        </label>
+      </div>
+
+      <button id="save-config" type="button" class="btn btn-primary">
+        <span class="btn-icon">💾</span>
+        <span>保存配置</span>
+      </button>
     </section>
 
     <!-- 使用说明区域 -->
     <section id="info-section" class="section" style="display: none;">
-      <h2>使用说明</h2>
-      <div class="info-content">
-        <p>✅ 配置已完成！现在可以使用以下方式添加书签：</p>
-        <ol>
-          <li><strong>右键菜单</strong>：在任意网页右键，选择"添加到 LiteMark" → 选择分类（或无分类）</li>
-          <li><strong>链接添加</strong>：右键点击链接，选择"添加到 LiteMark" → 选择分类</li>
-          <li><strong>标题获取方式：</strong>
-            <ul>
-              <li>如果选中了文本，会使用选中文本作为书签标题</li>
-              <li>如果没有选中文本，会使用网站标题（页面 title）</li>
-            </ul>
-          </li>
-        </ol>
-        <p class="tip">💡 提示：分类菜单会自动从 LiteMark 中加载，新添加的分类会在下次右键时显示</p>
+      <!-- AI 状态显示 -->
+      <div class="ai-status-card" id="ai-status-display" style="display: none;">
+        <div class="ai-status-header">
+          <span class="ai-icon">🤖</span>
+          <span class="ai-title">AI 功能状态</span>
+        </div>
+        <div class="ai-status-body">
+          <div class="status-badge" id="ai-status-badge">
+            <span class="badge-dot"></span>
+            <span id="ai-enabled-text">已启用</span>
+          </div>
+          <p class="ai-description">右键菜单中会显示"AI 智能添加"选项</p>
+        </div>
       </div>
 
+      <!-- 版本信息 -->
+      <div class="version-section">
+        <div class="version-item">
+          <span class="version-label">LiteMark 版本</span>
+          <span id="litemark-version" class="version-value">加载中...</span>
+        </div>
+        <div class="version-item">
+          <span class="version-label">插件版本</span>
+          <span class="version-value">2.0.0</span>
+        </div>
+      </div>
+
+      <!-- 状态消息 -->
       <div id="status"></div>
 
-      <div class="quick-add-section">
-        <h3>导入浏览器收藏夹</h3>
-        <div class="form-group">
-          <label>
-            <input type="checkbox" id="use-folder-as-category" /> 使用文件夹名称作为分类
+      <!-- 导入收藏夹区域 -->
+      <div class="import-section">
+        <h3 class="section-title">
+          <span class="title-icon">📥</span>
+          导入浏览器收藏夹
+        </h3>
+
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="use-folder-as-category" />
+            <span class="checkbox-custom"></span>
+            <span class="checkbox-text">
+              <strong>使用文件夹名称作为分类</strong>
+              <small>收藏夹的文件夹结构将转换为 LiteMark 分类</small>
+            </span>
           </label>
-          <small>如果勾选，浏览器收藏夹的文件夹名称将作为 LiteMark 的分类</small>
         </div>
-        <button id="import-bookmarks" type="button" class="btn btn-primary">导入收藏夹</button>
+
+        <button id="import-bookmarks" type="button" class="btn btn-secondary">
+          <span class="btn-icon">📥</span>
+          <span>开始导入</span>
+        </button>
 
         <div id="import-progress" style="display: none;">
-          <div class="progress-text" id="progress-text">准备导入...</div>
+          <div class="progress-header">
+            <div class="progress-text" id="progress-text">准备导入...</div>
+            <div class="progress-percentage" id="progress-percentage">0%</div>
+          </div>
           <div class="progress-bar">
             <div class="progress-fill" id="progress-fill"></div>
           </div>
           <div class="progress-details" id="progress-details"></div>
         </div>
       </div>
+
+      <!-- 设置按钮 -->
+      <button id="show-config" type="button" class="btn btn-text">
+        <span class="btn-icon">⚙️</span>
+        <span>修改配置</span>
+      </button>
     </section>
   </div>
 

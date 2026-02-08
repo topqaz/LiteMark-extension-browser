@@ -1,42 +1,37 @@
-// 配置管理
 async function loadConfig() {
   try {
     console.log('加载配置...');
-    const result = await chrome.storage.sync.get(['apiUrl', 'username', 'password']);
-    console.log('从存储读取的配置:', { 
-      apiUrl: result.apiUrl, 
-      username: result.username, 
-      hasPassword: !!result.password 
+    const result = await chrome.storage.sync.get(['apiUrl', 'username', 'password', 'enableAI']);
+    console.log('从存储读取的配置:', {
+      apiUrl: result.apiUrl,
+      username: result.username,
+      hasPassword: !!result.password,
+      enableAI: result.enableAI
     });
-    
+
     const apiUrlInput = document.getElementById('api-url');
     const usernameInput = document.getElementById('username');
     const passwordInput = document.getElementById('password');
-    
+    const enableAICheckbox = document.getElementById('enable-ai');
+
     if (!apiUrlInput || !usernameInput || !passwordInput) {
       console.error('找不到输入框元素');
       return;
     }
-    
-    if (result.apiUrl) {
-      apiUrlInput.value = result.apiUrl;
-    }
-    if (result.username) {
-      usernameInput.value = result.username;
-    }
-    if (result.password) {
-      passwordInput.value = result.password;
-    }
-    
-    // 如果有配置，显示使用说明
+
+    if (result.apiUrl) apiUrlInput.value = result.apiUrl;
+    if (result.username) usernameInput.value = result.username;
+    if (result.password) passwordInput.value = result.password;
+    if (enableAICheckbox) enableAICheckbox.checked = result.enableAI || false;
+
     if (result.apiUrl && result.username && result.password) {
       console.log('已有配置，显示使用说明');
-      document.getElementById('config-section').style.display = 'none';
-      document.getElementById('info-section').style.display = 'block';
+      showInfoSection();
+      updateAIStatus(result.enableAI);
+      await loadVersion(result.apiUrl);
     } else {
       console.log('无配置，显示配置区域');
-      document.getElementById('config-section').style.display = 'block';
-      document.getElementById('info-section').style.display = 'none';
+      showConfigSection();
     }
   } catch (error) {
     console.error('加载配置错误:', error);
@@ -44,22 +39,23 @@ async function loadConfig() {
   }
 }
 
+
 async function saveConfig() {
   try {
     console.log('开始保存配置...');
-    
+
     const apiUrl = document.getElementById('api-url').value.trim();
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value;
+    const enableAI = document.getElementById('enable-ai').checked;
 
-    console.log('配置值:', { apiUrl, username, password: password ? '***' : '' });
+    console.log('配置值:', { apiUrl, username, password: password ? '***' : '', enableAI });
 
     if (!apiUrl || !username || !password) {
       showStatus('请填写所有配置项', 'error');
       return;
     }
 
-    // 验证 URL 格式
     try {
       new URL(apiUrl);
     } catch (e) {
@@ -67,24 +63,39 @@ async function saveConfig() {
       return;
     }
 
+
+    showStatus('正在测试连接...', 'info');
+
+    try {
+      const token = await login(apiUrl.replace(/\/$/, ''), username, password);
+      if (!token) {
+        throw new Error('登录失败，请检查用户名和密码');
+      }
+    } catch (error) {
+      showStatus('连接失败：' + error.message, 'error');
+      return;
+    }
+
     console.log('保存到 chrome.storage...');
     await chrome.storage.sync.set({
-      apiUrl: apiUrl.replace(/\/$/, ''), // 移除末尾斜杠
+      apiUrl: apiUrl.replace(/\/$/, ''), 
       username,
-      password
+      password,
+      enableAI
     });
 
     console.log('配置已保存到存储');
-    
-    // 验证保存是否成功
-    const saved = await chrome.storage.sync.get(['apiUrl', 'username']);
+
+   
+    const saved = await chrome.storage.sync.get(['apiUrl', 'username', 'enableAI']);
     console.log('验证保存结果:', saved);
 
-    showStatus('配置已保存', 'success');
-    
+    showStatus('✅ 配置保存成功！', 'success');
+
     setTimeout(() => {
-      document.getElementById('config-section').style.display = 'none';
-      document.getElementById('info-section').style.display = 'block';
+      showInfoSection();
+      updateAIStatus(enableAI);
+      loadVersion(apiUrl.replace(/\/$/, ''));
     }, 1000);
   } catch (error) {
     console.error('保存配置时出错:', error);
@@ -92,7 +103,6 @@ async function saveConfig() {
   }
 }
 
-// 登录获取 Token
 async function login(apiUrl, username, password) {
   try {
     const response = await fetch(`${apiUrl}/api/auth/login`, {
@@ -125,18 +135,103 @@ async function login(apiUrl, username, password) {
   }
 }
 
+
+async function loadVersion(apiUrl) {
+  try {
+    const versionEl = document.getElementById('litemark-version');
+    if (!versionEl) return;
+
+    versionEl.textContent = '加载中...';
+    versionEl.style.color = '#3b82f6';
+
+    const response = await fetch(`${apiUrl}/version`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    versionEl.textContent = data.version || '未知';
+    versionEl.style.color = '#3b82f6';
+  } catch (error) {
+    console.error('获取版本信息失败:', error);
+    const versionEl = document.getElementById('litemark-version');
+    if (versionEl) {
+      versionEl.textContent = '获取失败';
+      versionEl.style.color = '#ef4444';
+    }
+  }
+}
+
+
+function showConfigSection() {
+  document.getElementById('config-section').style.display = 'block';
+  document.getElementById('info-section').style.display = 'none';
+}
+
+
+function showInfoSection() {
+  document.getElementById('config-section').style.display = 'none';
+  document.getElementById('info-section').style.display = 'block';
+}
+
+function updateAIStatus(enabled) {
+  const aiStatusDisplay = document.getElementById('ai-status-display');
+  const aiEnabledText = document.getElementById('ai-enabled-text');
+  const statusBadge = document.getElementById('ai-status-badge');
+
+  if (aiStatusDisplay && aiEnabledText) {
+    aiStatusDisplay.style.display = 'block';
+
+    if (enabled) {
+      aiEnabledText.textContent = '已启用';
+      aiEnabledText.style.color = '#10b981';
+      if (statusBadge) statusBadge.classList.remove('disabled');
+    } else {
+      aiEnabledText.textContent = '未启用';
+      aiEnabledText.style.color = '#94a3b8';
+      if (statusBadge) statusBadge.classList.add('disabled');
+    }
+  }
+}
+
 function showStatus(message, type) {
   const statusEl = document.getElementById('status');
   if (!statusEl) return;
-  
+
   statusEl.textContent = message;
   statusEl.className = `status ${type}`;
+
   setTimeout(() => {
     statusEl.className = 'status';
   }, 5000);
 }
 
-// 获取浏览器收藏夹
+
+function togglePasswordVisibility() {
+  const passwordInput = document.getElementById('password');
+  const eyeOpenIcon = document.querySelector('.eye-open');
+  const eyeClosedIcon = document.querySelector('.eye-closed');
+  const toggleBtn = document.getElementById('toggle-password');
+
+  if (passwordInput.type === 'password') {
+    passwordInput.type = 'text';
+    eyeOpenIcon.style.display = 'none';
+    eyeClosedIcon.style.display = 'block';
+    toggleBtn.setAttribute('aria-label', '隐藏密码');
+  } else {
+    passwordInput.type = 'password';
+    eyeOpenIcon.style.display = 'block';
+    eyeClosedIcon.style.display = 'none';
+    toggleBtn.setAttribute('aria-label', '显示密码');
+  }
+}
+
 async function getBrowserBookmarks() {
   return new Promise((resolve, reject) => {
     chrome.bookmarks.getTree((bookmarkTreeNodes) => {
@@ -149,94 +244,95 @@ async function getBrowserBookmarks() {
   });
 }
 
-// 递归提取所有书签
+
 function extractBookmarks(bookmarkNodes, useFolderAsCategory = false, parentFolder = null) {
   const bookmarks = [];
-  
+
   for (const node of bookmarkNodes) {
     if (node.url) {
-      // 这是一个书签
+
       bookmarks.push({
         title: node.title || node.url,
         url: node.url,
         category: useFolderAsCategory && parentFolder ? parentFolder : undefined
       });
     } else if (node.children) {
-      // 这是一个文件夹
+
       const folderName = node.title && node.title.trim() ? node.title.trim() : null;
       const newParentFolder = useFolderAsCategory && folderName ? folderName : parentFolder;
-      // 递归处理子节点
+
       const childBookmarks = extractBookmarks(node.children, useFolderAsCategory, newParentFolder);
       bookmarks.push(...childBookmarks);
     }
   }
-  
+
   return bookmarks;
 }
 
-// 导入收藏夹
+
 async function importBookmarks() {
+  const progressDiv = document.getElementById('import-progress');
+  const progressText = document.getElementById('progress-text');
+  const progressFill = document.getElementById('progress-fill');
+  const progressDetails = document.getElementById('progress-details');
+  const progressPercentage = document.getElementById('progress-percentage');
+  const importBtn = document.getElementById('import-bookmarks');
+
   try {
-    // 获取配置
+
     const config = await chrome.storage.sync.get(['apiUrl', 'username', 'password']);
-    
+
     if (!config.apiUrl || !config.username || !config.password) {
       showStatus('请先配置 LiteMark 地址和登录信息', 'error');
       return;
     }
 
-    // 获取选项
+
     const useFolderAsCategory = document.getElementById('use-folder-as-category').checked;
-    
-    // 显示进度
-    const progressDiv = document.getElementById('import-progress');
-    const progressText = document.getElementById('progress-text');
-    const progressFill = document.getElementById('progress-fill');
-    const progressDetails = document.getElementById('progress-details');
-    const importBtn = document.getElementById('import-bookmarks');
-    
+
     progressDiv.style.display = 'block';
     importBtn.disabled = true;
-    importBtn.textContent = '导入中...';
-    
-    // 获取浏览器收藏夹
+    importBtn.innerHTML = '<span class="loading"></span><span>导入中...</span>';
+
     progressText.textContent = '正在读取浏览器收藏夹...';
+    progressPercentage.textContent = '10%';
     progressFill.style.width = '10%';
-    
+
     const bookmarkTree = await getBrowserBookmarks();
     const bookmarks = extractBookmarks(bookmarkTree, useFolderAsCategory);
-    
+
     if (bookmarks.length === 0) {
       showStatus('未找到任何收藏夹', 'error');
       progressDiv.style.display = 'none';
       importBtn.disabled = false;
-      importBtn.textContent = '导入收藏夹';
+      importBtn.innerHTML = '<span class="btn-icon">📥</span><span>开始导入</span>';
       return;
     }
-    
+
     progressText.textContent = `找到 ${bookmarks.length} 个收藏，开始导入...`;
     progressDetails.textContent = `准备导入 ${bookmarks.length} 个书签`;
-    
-    // 获取 Token
+
+
     const token = await login(config.apiUrl, config.username, config.password);
-    
+
     if (!token) {
       throw new Error('无法获取登录 Token');
     }
-    
-    // 批量导入
+
+
     let successCount = 0;
     let failCount = 0;
     const errors = [];
-    
+
     for (let i = 0; i < bookmarks.length; i++) {
       const bookmark = bookmarks[i];
       const progress = Math.round(((i + 1) / bookmarks.length) * 90) + 10; // 10% 到 100%
-      
+
       progressFill.style.width = `${progress}%`;
+      progressPercentage.textContent = `${progress}%`;
       progressText.textContent = `正在导入 ${i + 1}/${bookmarks.length}...`;
       progressDetails.textContent = `成功: ${successCount} | 失败: ${failCount}`;
-      
+
       try {
         const response = await fetch(`${config.apiUrl}/api/bookmarks`, {
           method: 'POST',
@@ -251,7 +347,7 @@ async function importBookmarks() {
             visible: true
           })
         });
-        
+
         if (!response.ok) {
           let errorMessage = '添加失败';
           try {
@@ -263,7 +359,7 @@ async function importBookmarks() {
           }
           throw new Error(errorMessage);
         }
-        
+
         successCount++;
       } catch (error) {
         failCount++;
@@ -274,16 +370,17 @@ async function importBookmarks() {
         });
         console.error(`导入书签失败: ${bookmark.title}`, error);
       }
-      
-      // 添加小延迟，避免请求过快
+
+
       if (i < bookmarks.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
-    
-    // 完成
+
+
     progressFill.style.width = '100%';
-    
+    progressPercentage.textContent = '100%';
+
     if (failCount === 0) {
       progressText.textContent = `✅ 导入完成！成功导入 ${successCount} 个书签`;
       progressDetails.textContent = '';
@@ -294,25 +391,22 @@ async function importBookmarks() {
       showStatus(`导入完成：成功 ${successCount} 个，失败 ${failCount} 个`, 'error');
       console.error('导入失败的书签:', errors);
     }
-    
+
     importBtn.disabled = false;
-    importBtn.textContent = '导入收藏夹';
-    
-    // 3秒后隐藏进度条
+    importBtn.innerHTML = '<span class="btn-icon">📥</span><span>开始导入</span>';
+
+
     setTimeout(() => {
       progressDiv.style.display = 'none';
     }, 5000);
-    
+
   } catch (error) {
     console.error('导入收藏夹失败:', error);
     showStatus('导入失败：' + (error.message || '未知错误'), 'error');
-    
-    const importBtn = document.getElementById('import-bookmarks');
-    const progressDiv = document.getElementById('import-progress');
-    
+
     if (importBtn) {
       importBtn.disabled = false;
-      importBtn.textContent = '导入收藏夹';
+      importBtn.innerHTML = '<span class="btn-icon">📥</span><span>开始导入</span>';
     }
     if (progressDiv) {
       progressDiv.style.display = 'none';
@@ -320,26 +414,24 @@ async function importBookmarks() {
   }
 }
 
-// 事件监听
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('扩展已加载');
-  
+
   try {
     await loadConfig();
     console.log('配置加载完成');
 
     const saveBtn = document.getElementById('save-config');
-    
     if (saveBtn) {
       saveBtn.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
         console.log('点击保存配置按钮');
-        
-        // 禁用按钮防止重复点击
+
         saveBtn.disabled = true;
-        saveBtn.textContent = '保存中...';
-        
+        const originalHTML = saveBtn.innerHTML;
+        saveBtn.innerHTML = '<span class="loading"></span><span>保存中...</span>';
+
         try {
           await saveConfig();
         } catch (err) {
@@ -347,15 +439,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           showStatus('保存失败：' + (err.message || '未知错误'), 'error');
         } finally {
           saveBtn.disabled = false;
-          saveBtn.textContent = '保存配置';
+          saveBtn.innerHTML = originalHTML;
         }
       });
     } else {
       console.error('找不到 save-config 按钮');
-      showStatus('初始化错误：找不到保存按钮', 'error');
     }
-    
-    // 导入收藏夹按钮
+
+
     const importBtn = document.getElementById('import-bookmarks');
     if (importBtn) {
       importBtn.addEventListener('click', async (e) => {
@@ -365,9 +456,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         await importBookmarks();
       });
     }
+
+
+    const showConfigBtn = document.getElementById('show-config');
+    if (showConfigBtn) {
+      showConfigBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showConfigSection();
+      });
+    }
+
+    const togglePasswordBtn = document.getElementById('toggle-password');
+    if (togglePasswordBtn) {
+      togglePasswordBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        togglePasswordVisibility();
+      });
+    }
+
+    // 配置输入框回车事件
+    const configInputs = document.querySelectorAll('#config-section input');
+    configInputs.forEach(input => {
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveBtn?.click();
+        }
+      });
+    });
+
   } catch (error) {
     console.error('初始化错误:', error);
     showStatus('初始化失败：' + error.message, 'error');
   }
 });
-
